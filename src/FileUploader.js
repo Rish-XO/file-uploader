@@ -4,9 +4,11 @@ import axios from 'axios';
 const FileUploader = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleFileChange = (e) => {
     setSelectedFile(e.target.files[0]);
+    setUploadProgress(0); // Reset progress
   };
 
   const handleUploadAndProcessFile = async () => {
@@ -16,22 +18,24 @@ const FileUploader = () => {
     }
 
     try {
+      const filename = `uploads/${Date.now()}_${selectedFile.name}`;
+
       // Step 1: Generate Signed URL
       const signedUrlResponse = await axios.get('http://localhost:3001/generateSignedUrl', {
-        params: {
-          filename: selectedFile.name,
-        },
+        params: { filename },
       });
 
       const uploadUrl = signedUrlResponse.data.url;
-      const filename = selectedFile.name;
-
       console.log('Signed URL:', uploadUrl);
 
-      // Step 2: Upload File to MinIO
+      // Step 2: Upload File to MinIO with Progress Tracking
       const uploadResponse = await axios.put(uploadUrl, selectedFile, {
         headers: {
           'Content-Type': 'application/octet-stream',
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
         },
       });
 
@@ -39,7 +43,7 @@ const FileUploader = () => {
         setUploadStatus('File uploaded successfully');
         console.log('File uploaded successfully');
 
-        // Step 3: Trigger Backend Processing
+        // Step 3: Trigger Backend Processing with the Same Filename
         const processResponse = await axios.post('http://localhost:3001/processUploadedFile', {
           filename,
         });
@@ -64,10 +68,16 @@ const FileUploader = () => {
         Upload and Process File
       </button>
       <br />
+      {uploadProgress > 0 && (
+        <div style={styles.progressContainer}>
+          <div style={{ ...styles.progressBar, width: `${uploadProgress}%` }} />
+        </div>
+      )}
       {uploadStatus && <p style={styles.status}>{uploadStatus}</p>}
     </div>
   );
 };
+
 
 const styles = {
   container: {
@@ -98,9 +108,16 @@ const styles = {
     borderRadius: '4px',
     cursor: 'pointer',
   },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-    cursor: 'not-allowed',
+  progressContainer: {
+    width: '100%',
+    backgroundColor: '#f3f3f3',
+    borderRadius: '5px',
+    marginTop: '10px',
+  },
+  progressBar: {
+    height: '10px',
+    backgroundColor: '#4caf50',
+    borderRadius: '5px',
   },
   status: {
     marginTop: '20px',
